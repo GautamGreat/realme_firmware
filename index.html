@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realme Firmware Database</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-6">
+        <!-- Search Box -->
+        <div class="mb-6">
+            <input 
+                type="text" 
+                id="searchInput" 
+                placeholder="Search by model, project, or filename..."
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none shadow-sm"
+            >
+        </div>
+
+        <!-- Table -->
+        <div class="bg-white rounded-lg shadow overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Model</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase hidden sm:table-cell">Project No</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Filename</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody" class="bg-white divide-y divide-gray-200">
+                    <tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="mt-6 flex items-center justify-between">
+            <button 
+                id="prevBtn"
+                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm"
+            >
+                Previous
+            </button>
+            <span class="text-gray-700 text-sm">
+                Page <span id="currentPage">1</span> of <span id="totalPages">1</span>
+            </span>
+            <button 
+                id="nextBtn"
+                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm"
+            >
+                Next
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let allData = [];
+        let filteredData = [];
+        let currentPage = 1;
+        const itemsPerPage = 15;
+
+        // Load and parse CSV
+        async function loadCSV() {
+            try {
+                const response = await fetch('realmeLinks.csv');
+                const text = await response.text();
+                const lines = text.trim().split('\n');
+                
+                allData = lines.slice(1).map(line => {
+                    const parts = parseCSVLine(line);
+                    return {
+                        market_model: parts[0] || '',
+                        project_no: parts[1] || '',
+                        filename: parts[2] || '',
+                        link: parts[3] || ''
+                    };
+                }).filter(item => item.market_model);
+                
+                filteredData = [...allData];
+                displayTable();
+            } catch (error) {
+                document.getElementById('tableBody').innerHTML = 
+                    `<tr><td colspan="4" class="px-4 py-8 text-center text-red-600">Error loading data. Please run: python -m http.server 8000<br>Then open: http://localhost:8000/index.html</td></tr>`;
+            }
+        }
+
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let char of line) {
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current.trim());
+            return result;
+        }
+
+        function displayTable() {
+            const start = (currentPage - 1) * itemsPerPage;
+            const end = start + itemsPerPage;
+            const pageData = filteredData.slice(start, end);
+            
+            const tbody = document.getElementById('tableBody');
+            
+            if (pageData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">No results found</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = pageData.map(item => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 text-sm text-gray-900">
+                        ${escapeHtml(item.market_model)}
+                        <div class="sm:hidden text-xs text-gray-500 mt-1">Project: ${escapeHtml(item.project_no)}</div>
+                    </td>
+                    <td class="px-4 py-3 text-sm text-gray-600 hidden sm:table-cell">${escapeHtml(item.project_no)}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900 break-all">${escapeHtml(item.filename)}</td>
+                    <td class="px-4 py-3 text-sm">
+                        <a href="${escapeHtml(item.link)}" target="_blank" 
+                           class="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                            Download
+                        </a>
+                    </td>
+                </tr>
+            `).join('');
+            
+            updatePagination();
+        }
+
+        function updatePagination() {
+            const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
+            document.getElementById('currentPage').textContent = currentPage;
+            document.getElementById('totalPages').textContent = totalPages;
+            document.getElementById('prevBtn').disabled = currentPage === 1;
+            document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+        }
+
+        function search(query) {
+            const term = query.toLowerCase();
+            filteredData = term ? allData.filter(item => 
+                item.market_model.toLowerCase().includes(term) ||
+                item.project_no.toLowerCase().includes(term) ||
+                item.filename.toLowerCase().includes(term)
+            ) : [...allData];
+            currentPage = 1;
+            displayTable();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        // Event listeners
+        document.getElementById('searchInput').addEventListener('input', (e) => search(e.target.value));
+        document.getElementById('prevBtn').addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                displayTable();
+            }
+        });
+        document.getElementById('nextBtn').addEventListener('click', () => {
+            const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+            if (currentPage < totalPages) {
+                currentPage++;
+                displayTable();
+            }
+        });
+
+        // Load data
+        loadCSV();
+    </script>
+</body>
+</html>
